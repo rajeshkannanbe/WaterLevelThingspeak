@@ -6,19 +6,19 @@
 #include "ThingSpeak.h"
 
 //Def
-#define myPeriodic 15 //in sec | Thingspeak pub is 15sec
+#define myPeriodic 5//in sec | Thingspeak pub is 15sec
 #define ONE_WIRE_BUS 2  // DS18B20 on arduino pin2 corresponds to D4 on physical board
 
-float prevTemp = 0;
+int prev_motorstatus = -1;
 const char* server = "api.thingspeak.com";
 const char * myWriteAPIKey = "NJY2D2P1IJ348UD2";
 unsigned long myChannelNumber = 255487;
-const char* MY_SSID = "moto"; 
-const char* MY_PWD = "12345678";
+const char* MY_SSID = "priya"; 
+const char* MY_PWD = "priya@9945";
 
-#define WATER_LEVEL_HIGH 14
+#define WATER_LEVEL_HIGH 13
 #define WATER_LEVEL_MEDIUM  12
-#define WATER_LEVEL_LOW 13
+#define WATER_LEVEL_LOW 14
 
 #define LED_HIGH_PIN 15
 #define LED_MEDIUM_PIN 3
@@ -53,8 +53,14 @@ void setup() {
     digitalWrite(sensorPin[i],LOW);
      //pinMode(ledPin[i], OUTPUT);
  }
+  pinMode(12,OUTPUT);
+  digitalWrite(12, LOW);
   pinMode(3,OUTPUT);
   pinMode(15,OUTPUT);
+  //pinMode(1,OUTPUT);
+  digitalWrite(3, LOW);
+  //digitalWrite(1, LOW);
+  digitalWrite(15, LOW);
   pinMode(motor, OUTPUT);
   digitalWrite(motor, LOW); 
   waterlevel();
@@ -64,31 +70,41 @@ void setup() {
 }
 
 void loop() {
-  static float temp = 34.40;
   static int loopCount = 0;
-   
-  int storemotor = ThingSpeak.readFloatField(myChannelNumber,1);
+  static int storemotor;// = ThingSpeak.readFloatField(myChannelNumber,1);
+  static int i = 0;
   Serial.println("Motor status1:: ");
   Serial.println(storemotor);
+  
   if(storemotor != thingspeakWaterLevel.motorStatus)
     motoron(storemotor);
+  
   waterlevel();
+  //storemotor = digitalRead(motor);
   Serial.println("WaterLevel:: ");
   Serial.println(thingspeakWaterLevel.waterLevel);
   Serial.println("Motor status2:: ");
   Serial.println(thingspeakWaterLevel.motorStatus);
-  ThingSpeak.setField(1,thingspeakWaterLevel.motorStatus);
+  if(!(i % 4)||(prev_motorstatus != thingspeakWaterLevel.motorStatus)) 
+  {
+    prev_motorstatus = thingspeakWaterLevel.motorStatus;
+    ThingSpeak.setField(1,thingspeakWaterLevel.motorStatus);
+    i = 0;
+    Serial.println("Motor status update\r\n");
+  }
   ThingSpeak.setField(2,thingspeakWaterLevel.waterLevel);
   ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);  
   int count = myPeriodic;
+  i++;
   while(count--){
-  delay(1000);
+  //delay(1000);
   storemotor = ThingSpeak.readFloatField(myChannelNumber,1);
   Serial.println("Motor 9 :: ");
   Serial.println(storemotor);
   if(storemotor != thingspeakWaterLevel.motorStatus)
     break;
   }
+  delay(1000);
 }
 
 void connectWifi()
@@ -123,6 +139,8 @@ int waterlevel()
        //digitalWrite(ledPin[i], LOW);       
      }    
   }
+  
+  //Serial.println(level);
   if(digitalRead(motor))
     thingspeakWaterLevel.motorStatus = 1;
   else
@@ -135,10 +153,15 @@ int waterlevel()
      case 3:
        thingspeakWaterLevel.waterLevel = 2;
       break;
+     case 5:
      case 7:
        thingspeakWaterLevel.waterLevel = 3;
        if(digitalRead(motor)){
-        
+        Serial.println("motor off tank full\r\n");
+        digitalWrite(motor, LOW);
+        digitalWrite(15, LOW);
+        thingspeakWaterLevel.motorStatus = 0;
+        //digitalWrite(3, LOW);
        }
        else{
          }
@@ -149,12 +172,19 @@ int waterlevel()
         
          }
        else{
+          digitalWrite(motor, HIGH);
+          digitalWrite(15, HIGH);
+          //digitalWrite(3, HIGH);
+          thingspeakWaterLevel.motorStatus = 1;
          } 
       break;
      default:
+      Serial.println("motor off defalut\r\n");
       thingspeakWaterLevel.waterLevel = -1;
       if(digitalRead(motor)){
-        //digitalWrite(motor, LOW);
+        digitalWrite(motor, LOW);
+        digitalWrite(15, LOW);
+        //digitalWrite(3, LOW);
         thingspeakWaterLevel.motorStatus = 0;
        }
        break;
@@ -166,10 +196,13 @@ int motoron(int on)
 {
   
   level = 0;
+  Serial.println("motoon function enter\r\n");
   if(!on)
   {
     digitalWrite(motor, LOW);
-    return 1;
+    digitalWrite(15, LOW);
+    //digitalWrite(3, LOW);
+    return 0;
   }
   
   for(int i = 0; i < sensors; i++) {
@@ -180,18 +213,22 @@ int motoron(int on)
   
      }    
   }
-  if(level == 7)
+  if(level == 7 || level == 5)
   {
-    Serial.print("motor on  \r\n");
-    digitalWrite(motor, HIGH);
-    digitalWrite(LED_HIGH_PIN, HIGH);
-    digitalWrite(3, HIGH);
-    digitalWrite(1, HIGH);
-    
+    Serial.print("motor off  \r\n");
+    if(digitalRead(motor)){
+      digitalWrite(motor, LOW);
+      digitalWrite(15, LOW);
+      //digitalWrite(LED_HIGH_PIN, HIGH);
+      //digitalWrite(3, LOW);
+      //digitalWrite(1, HIGH);
+    }
     return 0;
   }
   else{
       digitalWrite(motor, HIGH);
+      digitalWrite(15, HIGH);
+      //digitalWrite(3, HIGH);
   }
 
   return 1;
