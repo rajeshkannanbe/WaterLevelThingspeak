@@ -10,11 +10,14 @@
 #define ONE_WIRE_BUS 2  // DS18B20 on arduino pin2 corresponds to D4 on physical board
 
 int prev_motorstatus = -1;
+int prev_waterstatus = -2;
+int wifiStatus=0;
+int internetStatus=0;
 const char* server = "api.thingspeak.com";
 const char * myWriteAPIKey = "NJY2D2P1IJ348UD2";
 unsigned long myChannelNumber = 255487;
-const char* MY_SSID = "priya"; 
-const char* MY_PWD = "priya@9945";
+const char* MY_SSID = "pipi"; 
+const char* MY_PWD = "7259496969";
 
 #define WATER_LEVEL_HIGH 13
 #define WATER_LEVEL_MEDIUM  12
@@ -42,11 +45,11 @@ waterLevelCntl thingspeakWaterLevel;
 WiFiClient  client;
 int motoron(int on);
 int waterlevel(void);
-void connectWifi(void);
+int connectWifi(void);
 int sent = 0;
 void setup() {
-  Serial.begin(115200);
-  connectWifi();
+  Serial.begin(9600);
+  wifiStatus = connectWifi();
 
   for(int i = 0; i < sensors; i++) {
     pinMode(sensorPin[i], INPUT); 
@@ -55,29 +58,36 @@ void setup() {
  }
   pinMode(12,OUTPUT);
   digitalWrite(12, LOW);
-  pinMode(3,OUTPUT);
-  pinMode(15,OUTPUT);
+  //pinMode(3,OUTPUT);
+  //pinMode(15,OUTPUT);
   //pinMode(1,OUTPUT);
-  digitalWrite(3, LOW);
+  //digitalWrite(3, LOW);
   //digitalWrite(1, LOW);
-  digitalWrite(15, LOW);
+  //digitalWrite(15, LOW);
   pinMode(motor, OUTPUT);
   digitalWrite(motor, LOW); 
   waterlevel();
-  ThingSpeak.setField(1,thingspeakWaterLevel.motorStatus);
-  ThingSpeak.setField(2,thingspeakWaterLevel.waterLevel);
-  ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);  
+  if(wifiStatus){
+    ThingSpeak.setField(1,thingspeakWaterLevel.motorStatus);
+    ThingSpeak.setField(2,thingspeakWaterLevel.waterLevel);
+    ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);  
+  }
 }
 
 void loop() {
   static int loopCount = 0;
   static int storemotor;// = ThingSpeak.readFloatField(myChannelNumber,1);
   static int i = 0;
-  Serial.println("Motor status1:: ");
-  Serial.println(storemotor);
+  static int wifiDisconnectCount=0;
+  //Serial.println("Motor status1:: ");
+  //Serial.println(storemotor);
   
   if(storemotor != thingspeakWaterLevel.motorStatus)
+  {
+  
     motoron(storemotor);
+    i =100;
+  }
   
   waterlevel();
   //storemotor = digitalRead(motor);
@@ -85,43 +95,68 @@ void loop() {
   Serial.println(thingspeakWaterLevel.waterLevel);
   Serial.println("Motor status2:: ");
   Serial.println(thingspeakWaterLevel.motorStatus);
-  if(!(i % 4)||(prev_motorstatus != thingspeakWaterLevel.motorStatus)) 
+  if(!(i % 100)||(prev_motorstatus != thingspeakWaterLevel.motorStatus)||(prev_waterstatus != thingspeakWaterLevel.waterLevel)) 
   {
+    if(wifiStatus){
     prev_motorstatus = thingspeakWaterLevel.motorStatus;
     ThingSpeak.setField(1,thingspeakWaterLevel.motorStatus);
     i = 0;
-    Serial.println("Motor status update\r\n");
-  }
-  ThingSpeak.setField(2,thingspeakWaterLevel.waterLevel);
-  ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);  
+    Serial.println("Send Thinkspeak cloud\r\n");
+    prev_waterstatus = thingspeakWaterLevel.waterLevel;
+    ThingSpeak.setField(2,thingspeakWaterLevel.waterLevel);
+    ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey); 
+    }
+  } 
+  //storemotor = digitalRead(motor);
+
   int count = myPeriodic;
   i++;
+  delay(1000);
   while(count--){
   //delay(1000);
-  storemotor = ThingSpeak.readFloatField(myChannelNumber,1);
-  Serial.println("Motor 9 :: ");
-  Serial.println(storemotor);
+  if(wifiStatus){
+    storemotor = ThingSpeak.readFloatField(myChannelNumber,1);
+  }
+
+  //Serial.println(storemotor);
   if(storemotor != thingspeakWaterLevel.motorStatus)
     break;
   }
-  delay(1000);
+  Serial.println("count ");
+  Serial.println(i);
+  if(!wifiStatus){
+    wifiDisconnectCount++;
+    if(wifiDisconnectCount==60)
+    {
+      wifiStatus=connectWifi();
+      wifiDisconnectCount = 0;
+    }
+   }
+    delay(1000);
 }
 
-void connectWifi()
+int connectWifi()
 {
+  int countDelay = 0;
   Serial.print("Connecting to "+*MY_SSID);
   WiFi.begin(MY_SSID, MY_PWD);
-  while (WiFi.status() != WL_CONNECTED) {
+  while ((WiFi.status() != WL_CONNECTED) && (countDelay < 5)) {
   delay(1000);
   Serial.print(".");
+  countDelay++;
   }
-  
+  if(countDelay==5){
+    Serial.print("Failed connect WiFi UserName "+*MY_SSID);
+    Serial.print("Failed connect WiFi Password "+*MY_PWD);
+    return 0;
+  }
   Serial.println("");
   Serial.println("Connected");
   Serial.println("");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
   ThingSpeak.begin(client);  
+  return 1;
 }//end connect
 
 
@@ -172,9 +207,8 @@ int waterlevel()
         
          }
        else{
+          digitalWrite(15,HIGH);
           digitalWrite(motor, HIGH);
-          digitalWrite(15, HIGH);
-          //digitalWrite(3, HIGH);
           thingspeakWaterLevel.motorStatus = 1;
          } 
       break;
@@ -218,17 +252,13 @@ int motoron(int on)
     Serial.print("motor off  \r\n");
     if(digitalRead(motor)){
       digitalWrite(motor, LOW);
-      digitalWrite(15, LOW);
-      //digitalWrite(LED_HIGH_PIN, HIGH);
-      //digitalWrite(3, LOW);
-      //digitalWrite(1, HIGH);
+    digitalWrite(15, LOW);
     }
     return 0;
   }
   else{
       digitalWrite(motor, HIGH);
-      digitalWrite(15, HIGH);
-      //digitalWrite(3, HIGH);
+      Serial.print("motor on  \r\n");
   }
 
   return 1;
